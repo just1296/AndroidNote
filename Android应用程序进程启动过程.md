@@ -37,3 +37,47 @@ AMS在启动应用程序时会检查这个应用程序需要的应用程序进�
 - Binder线程为一个PoolThread，PoolThread类继承了Thread类。通过调用IPCThreadState的joinThreadPool函数，将当前线程注册到Binder驱动程序中，这样我们创建的线程就加入了Binder线程池中，新创建的应用程序进程就支持Binder进程间通信了。我们只需要创建当前进程的Binder对象，并将它注册到ServiceeManager中就可以实现Binder进程间通信。
 
 ## 3、消息循环创建过程
+应用程序进程启动后会自动创建消息循环，在RuntimeInit的invokeStaticMain方法最后，抛出一个MethodAndArgsCaller异常，这个异常会被ZygoteInit的main方法捕获。
+
+```java
+public static void main(String argv[]) {
+	...
+	try {
+		...
+	} catch (MethodAndArgsCaller caller) {
+		caller.run();
+	}
+}
+
+public static class MethodAndArgsCaller extends Exception implements Runnable {
+	private final Method mMethod;
+	private final String[] mArgs;
+	
+	public void run() {
+		try {
+			mMethod.invoke(null, new Object[] {mArgs});
+		} catch (IllegalAccessException ex) {
+			throw new RuntimeException(ex);
+		}
+	}
+}
+```
+mMethod就是ActivityThread的main方法，mArgs就是应用程序进程的启动参数。ActivityThread的main方法如下：
+
+```java
+public static void main(String[] args) {
+	...
+	// 创建主线程Looper
+	Looper.prepareMainLooper();
+	ActivityThread thread = new ActivityThread();
+	thread.attach(false);
+	if (sMainThreadHandler == null) {
+		sMainThreadHandler = thread.getHandleer();
+	}
+	...
+	Looper.loop();
+}
+```
+ActivityThread类用于管理当前应用程序进程的主线程，main方法中创建主线程的消息循环Looper，创建ActivityThread。判断Handler类型的sMainThreadHandler是否为空，如果为空则获取H类并赋值给sMainThreadHandler。这个H类继承自Handler，是ActivityThread的内部类，用于处理主线程的消息循环。最后调用Looper的loop方法，使得Looper开始处理消息。
+
+因此，系统在应用程序进程启动完成后，就会创建一个消息循环，这样运行在应用程序进程中的应用程序可以方便地使用消息处理机制。
