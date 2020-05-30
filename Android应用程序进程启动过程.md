@@ -25,5 +25,15 @@ AMS在启动应用程序时会检查这个应用程序需要的应用程序进�
 	- 通过抛出MethodAndArgsCaller异常，调用ActivityThread的main方法，运行主线程的管理类ActivityThread。
 
 ## 2、Binder线程池启动过程
+- ZygoteInit的zygoteInit方法中会调用nativeZygoteInit方法创建Binder线程池，对应的jni函数是com_android_internal_os_ZygoteInit_nativeZygoteInit
+
+		const JNINativeMethod methods[] = {
+			{"nativeZygoteInit", "()V", 
+			(void*) com_android_internal_os_ZygoteInit_nativeZygoteInit},
+		};
+		
+- 函数内部最后调用ProcessState的startThreadPool函数启动Binder线程池
+- 支持Binder通信的进程中都有一个ProcessState类，它里面有一个**mThreadPoolStarted**变量，用来表示Binder线程池是否已经被启动过，默认值是false。每次调用startThreadPool函数时都会先检查这个标记，从而确保Binder线程池只会被启动一次。
+- Binder线程为一个PoolThread，PoolThread类继承了Thread类。通过调用IPCThreadState的joinThreadPool函数，将当前线程注册到Binder驱动程序中，这样我们创建的线程就加入了Binder线程池中，新创建的应用程序进程就支持Binder进程间通信了。我们只需要创建当前进程的Binder对象，并将它注册到ServiceeManager中就可以实现Binder进程间通信。
 
 ## 3、消息循环创建过程
