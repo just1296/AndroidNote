@@ -1,0 +1,29 @@
+# Android应用程序进程启动过程
+## 1、应用程序进程启动过程
+AMS在启动应用程序时会检查这个应用程序需要的应用程序进程是否存在，不存在就会请求Zygote进程启动需要的应用程序进程。在Zygote的Java框架层中会创建一个Server端的Socket，这个Socket用来等待AMS请求Zygote来创建新的应用程序进程。Zygote进程通过fock自身创建应用程序进程，这样应用程序进程就会获得Zygote进程在启动时创建的虚拟机实例。在应用程序进程创建过程中，除了获取虚拟机实例外，还创建了Binder线程池和消息循环，这样运行在应用进程中的应用程序就可以方便地使用Binder进行进程间通信以及处理消息了。
+
+### 1.1 AMS发送启动应用程序进程请求
+
+- AMS要启动应用程序进程，就需要向Zygote进程发送创建应用程序的请求，AMS会通过调用startProcessLocked方法向Zygote进程发送请求。
+
+	- 获取要创建的应用程序进程的用户ID
+	- 对用户组ID（gids）进行创建和赋值
+	- 如果entryPoint为null，则赋值为`android.app.ActivityThread`，即应用程序进程主线程的类名
+	- 调用Process的start方法，将应用程序进程用户ID和用户组ID传进去
+- Process的start方法只调用了ZygoteProcess的start方法，ZygoteProcess类用于保持与Zygote进程的通信状态。最后调用zygoteSendArgsAndGetResult方法。
+- zygoteSendArgsAndGetResult方法的主要作用就是将传入的应用进程的启动参数argsForZygote写入ZygoteState中，ZygoteState是ZygoteProcess的静态内部类，用于表示Zygote进程通信的状态。ZygoteState是由openZygoteSocketIfNeeded方法返回。
+- 由于在Zygote的main方法中会创建name为"zygote"的Server端Socket，在openZygoteSocketIfNeeded方法中，首先调用ZygoteState的connect方法与Server端Socket建立连接。如果连接Zygote主模式返回的ZygoteState与启动应用程序进程所需的ABI不匹配，就会尝试连接Zygote的辅模式。如果辅模式返回的ZygoteState与启动应用程序进程所需的ABI不匹配，则抛出ZygoteStartFailedEx异常。
+
+### 1.2 Zygote接收请求并创建应用程序进程
+- ZygoteInit通过registerZygoteSocket方法创建一个name为"zygote"的Server端的Socket，然后预加载类和资源，启动SystemServer进程，最后调用ZygoteServer的runSelectLoop方法等待AMS请求创建新的应用程序进程。
+- 当有AMS的请求数据到来时，会调用ZygoteConnection的runOnce方法来处理请求数据。
+
+	- 调用readArgumentList方法获取应用程序进程的启动参数
+	- 将readArgumentList方法返回的字符串数组args封装到Arguments类型的parseArgs对象中
+	- 调用Zygote的forkAndSpecialize方法来创建应用程序进程，fockAndSpecialize方法主要是通过fork当前进程来创建一个子进程，如果pid等于0，则说明当前代码逻辑运行在新创建的子进程中，这时会调用handleChildProc方法来处理应用程序进程。
+	- handleChildProc方法调用了ZygoteInit的zygoteInit方法，在新创建的应用程序进程中创建Binder线程池，初始化。
+	- 通过抛出MethodAndArgsCaller异常，调用ActivityThread的main方法，运行主线程的管理类ActivityThread。
+
+## 2、Binder线程池启动过程
+
+## 3、消息循环创建过程
