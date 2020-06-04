@@ -1,0 +1,2 @@
+# 根Activity的启动过程
+Activity的启动分为两种，一种是根Activity，一种是普通Activity。根Activity
